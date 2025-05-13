@@ -217,7 +217,7 @@
 
         // --- Google Maps SDK Callback ---
         function initApp() {
-            console.log("Google Maps API ready.");
+            // console.log("Google Maps API ready.");
             googleMapsReady = true;
             if (allProcessedActivities.length > 0 && displayedCount > 0) {
                 console.log("Maps API loaded after activities, rendering visible maps...");
@@ -294,7 +294,7 @@
             reader.onload = (e) => {
                 const fileContent = e.target.result;
                 try {
-                    console.time("File Processing Time");
+                    // console.time("File Processing Time");
                     const data = JSON.parse(fileContent);
                     let processed = [];
 
@@ -310,8 +310,8 @@
                         throw new Error("Unrecognized JSON format.");
                     }
                     allProcessedActivities = processed; // Store activities after date & velocity filters
-                    console.timeEnd("File Processing Time");
-                    console.log(`Initial processing complete: ${allProcessedActivities.length} activities (date & velocity filtered).`);
+                    // console.timeEnd("File Processing Time");
+                    // console.log(`Initial processing complete: ${allProcessedActivities.length} activities (date & velocity filtered).`);
                     applyAllDynamicFiltersAndDisplay(); // Apply dynamic filters and display
                 } catch (error) {
                     console.error("Error processing file:", error);
@@ -364,7 +364,7 @@
                 } else if (distanceMeters > 0.1 && timeDiffSeconds <= 0.1) { removedCount++; }
                 else { filteredWaypoints.push(currentPoint); lastAcceptedPoint = currentPoint; }
             }
-            if (removedCount > 0) { console.log(`Velocity filter for ${activityType} (max ${maxSpeedMPS / MPH_TO_MPS} mph) removed ${removedCount} outlier points. ${filteredWaypoints.length} points remain.`); }
+            // if (removedCount > 0) { console.log(`Velocity filter for ${activityType} (max ${maxSpeedMPS / MPH_TO_MPS} mph) removed ${removedCount} outlier points. ${filteredWaypoints.length} points remain.`); }
             return { waypoints: filteredWaypoints, removedCount: removedCount };
         }
 
@@ -494,7 +494,7 @@
                 }
             }
             allPositionRecords.sort((a, b) => a.time.getTime() - b.time.getTime());
-            console.log(`processSemanticSegmentsWithRawSignals: Collected ${allPositionRecords.length} valid position records from rawSignals.`);
+            // console.log(`processSemanticSegmentsWithRawSignals: Collected ${allPositionRecords.length} valid position records from rawSignals.`);
             if (allPositionRecords.length === 0 && rawSignalsArray.some(s => s.position)) {
                 console.warn("processSemanticSegmentsWithRawSignals: Found signals with 'position' key, but no valid LatLng/timestamp pairs were extracted. Check parsing logic and data structure of 'position' objects.");
             }
@@ -532,8 +532,8 @@
 
         // --- Dynamic Filtering and Display ---
         function applyAllDynamicFiltersAndDisplay() {
-            console.log("Applying dynamic filters with settings:", JSON.stringify(filterSettings));
-            console.log(`Starting with ${allProcessedActivities.length} initially processed activities.`);
+            // console.log("Applying dynamic filters with settings:", JSON.stringify(filterSettings));
+            // console.log(`Starting with ${allProcessedActivities.length} initially processed activities.`);
             currentlyVisibleActivities = allProcessedActivities.filter(activity => {
                 const activityTypeUpper = activity.type.toUpperCase();
                 let passes = true;
@@ -551,12 +551,12 @@
                     if (activity.totalDistanceMeters < minDistanceM) { passes = false; reason += `Cycle distance ${activity.totalDistanceMeters.toFixed(0)}m < ${minDistanceM}m. `; }
                 }
 
-                if (!passes) { console.log(`Activity ID ${activity.id} (${activity.type}) filtered out by dynamic filters. Reason: ${reason.trim()}`); }
+                // if (!passes) { console.log(`Activity ID ${activity.id} (${activity.type}) filtered out by dynamic filters. Reason: ${reason.trim()}`); }
                 // else { console.log(`Activity ID ${activity.id} (${activity.type}) PASSED dynamic filters.`); }
                 return passes;
             });
 
-            console.log(`${currentlyVisibleActivities.length} activities after dynamic filters.`);
+            // console.log(`${currentlyVisibleActivities.length} activities after dynamic filters.`);
             displayedCount = 0;
             activityListDiv.innerHTML = '';
             if (currentlyVisibleActivities.length > 0) {
