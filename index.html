@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Timeline to GPX (Full Code)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyD_9Mj_RArRfw12CuV6vjA5RpPwbv-Fvqo&callback=initApp&libraries=maps&v=weekly" defer async></script>
+    <style>
+        /* Use Inter font */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom styles for file input */
+        input[type="file"]::file-selector-button {
+            @apply bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-md cursor-pointer transition duration-150 ease-in-out mr-4;
+        }
+        /* Style for activity list items */
+        .activity-item {
+             @apply border border-gray-200 rounded-lg p-4 mb-3 flex flex-col md:flex-row items-start md:items-center justify-between hover:bg-gray-50 transition duration-150 ease-in-out;
+        }
+         .activity-info-container {
+            @apply flex-grow; /* Takes up most space */
+         }
+         .activity-actions {
+            @apply flex items-center mt-2 md:mt-0 md:ml-4 flex-shrink-0;
+         }
+        .activity-item input[type="checkbox"] {
+            @apply h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mr-3 cursor-pointer;
+        }
+        .individual-download-btn {
+            @apply p-2 text-gray-500 hover:text-blue-600 transition-colors duration-150 cursor-pointer;
+        }
+        /* Style for map preview */
+        .map-preview {
+            @apply w-full md:w-40 h-28 bg-gray-200 rounded border border-gray-300 mt-2 md:mt-0 flex-shrink-0;
+             position: relative;
+             height: 7rem; /* 112px */
+        }
+         .map-preview-placeholder {
+             @apply flex items-center justify-center h-full text-gray-500 text-xs text-center p-2;
+         }
+
+        /* Filter controls styling */
+        .filter-section-title { @apply text-lg font-semibold text-gray-800 mb-3 mt-4 border-b pb-2; }
+        .filter-group { @apply mb-4 p-3 border border-gray-200 rounded-md; }
+        .filter-group h3 { @apply text-sm font-semibold text-gray-700 mb-2; }
+        .filter-control { @apply flex items-center space-x-2 mb-1; }
+        .filter-control label { @apply text-xs text-gray-600 w-28 min-w-[7rem]; } /* Fixed width for labels */
+        .filter-control input[type="range"] { @apply w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer; }
+        .filter-control input[type="number"] { @apply w-20 text-xs p-1 border border-gray-300 rounded-md text-center; }
+
+
+        #message-box {
+            @apply fixed top-5 right-5 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md shadow-md z-50;
+            display: none;
+        }
+        #message-box button { @apply ml-4 bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded text-xs; }
+        #loading-indicator {
+            @apply fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50;
+            display: none;
+        }
+        .spinner { @apply border-4 border-t-4 border-gray-200 border-t-blue-500 rounded-full w-12 h-12 animate-spin; }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
+    <div class="max-w-5xl mx-auto bg-white p-6 md:p-8 rounded-lg shadow-md">
+
+        <h1 class="text-2xl md:text-3xl font-bold text-gray-800 mb-6 text-center">Google Timeline Activity Extractor</h1>
+
+        <div class="mb-6">
+            <label for="jsonFile" class="block text-sm font-medium text-gray-700 mb-2">Upload your Google Timeline JSON file:</label>
+            <input type="file" id="jsonFile" accept=".json" class="block w-full text-sm text-gray-500 file:rounded-md file:border-0 file:text-sm file:font-semibold">
+        </div>
+
+        <div>
+            <h2 class="filter-section-title">Activity Filters (Applied Dynamically)</h2>
+            <div id="activity-filter-controls-section" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div class="filter-group">
+                    <h3>Walking Filters</h3>
+                    <div class="filter-control">
+                        <label for="filter-walk-duration">Min Duration (min):</label>
+                        <input type="range" id="filter-walk-duration" min="0" max="180" value="5">
+                        <input type="number" id="filter-walk-duration-value" min="0" max="180" value="5" class="filter-value-input">
+                    </div>
+                    <div class="filter-control">
+                        <label for="filter-walk-distance">Min Distance (km):</label>
+                        <input type="range" id="filter-walk-distance" min="0" max="20" step="0.1" value="0.5">
+                        <input type="number" id="filter-walk-distance-value" min="0" max="20" step="0.1" value="0.5" class="filter-value-input">
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <h3>Cycling Filters</h3>
+                    <div class="filter-control">
+                        <label for="filter-cycle-duration">Min Duration (min):</label>
+                        <input type="range" id="filter-cycle-duration" min="0" max="360" value="10">
+                        <input type="number" id="filter-cycle-duration-value" min="0" max="360" value="10" class="filter-value-input">
+                    </div>
+                    <div class="filter-control">
+                        <label for="filter-cycle-distance">Min Distance (km):</label>
+                        <input type="range" id="filter-cycle-distance" min="0" max="100" step="0.5" value="1">
+                        <input type="number" id="filter-cycle-distance-value" min="0" max="100" step="0.5" value="1" class="filter-value-input">
+                    </div>
+                </div>
+            </div>
+
+            <h2 class="filter-section-title">Waypoint Outlier Filtering (Max Speed - Applied on File Load)</h2>
+            <p class="text-xs text-gray-500 mb-3">Note: These speed filters are applied when a file is first processed. To apply new speed limits to existing data, re-upload the file.</p>
+            <div id="speed-filter-controls-section" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                 <div class="filter-group">
+                    <h3>Walking Point Filter</h3>
+                    <div class="filter-control">
+                        <label for="filter-walk-speed">Max Speed (mph):</label>
+                        <input type="range" id="filter-walk-speed" min="1" max="50" value="30">
+                        <input type="number" id="filter-walk-speed-value" min="1" max="50" value="30" class="filter-value-input">
+                    </div>
+                </div>
+                 <div class="filter-group">
+                    <h3>Cycling Point Filter</h3>
+                    <div class="filter-control">
+                        <label for="filter-cycle-speed">Max Speed (mph):</label>
+                        <input type="range" id="filter-cycle-speed" min="1" max="100" value="60">
+                        <input type="number" id="filter-cycle-speed-value" min="1" max="100" value="60" class="filter-value-input">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div id="loading-indicator"> <div class="spinner"></div> <p class="text-white ml-3">Processing...</p> </div>
+        <div id="message-box"> <span id="message-text"></span> <button onclick="document.getElementById('message-box').style.display = 'none';">&times;</button> </div>
+
+        <div id="activity-list-section" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold text-gray-700">Detected Activities (Last 30 Days):</h2>
+                <button id="download-selected-top-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-md text-sm transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed" disabled>Download Selected</button>
+            </div>
+             <div class="mb-4 flex items-center space-x-4">
+                 <button id="select-all-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 px-4 rounded-md text-sm">Select All</button>
+                 <button id="deselect-all-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 px-4 rounded-md text-sm">Deselect All</button>
+            </div>
+            <div id="activity-list" class="mb-6 pr-2"></div>
+            <div id="load-more-container" class="text-center mb-6 hidden">
+                 <button id="load-more-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-5 rounded-md">Load More</button>
+            </div>
+            <div class="text-center">
+                <button id="download-selected-bottom-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-md transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed" disabled>Download Selected as GPX</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const fileInput = document.getElementById('jsonFile');
+        const activityListSection = document.getElementById('activity-list-section');
+        const activityListDiv = document.getElementById('activity-list');
+        const downloadSelectedTopBtn = document.getElementById('download-selected-top-btn');
+        const downloadSelectedBottomBtn = document.getElementById('download-selected-bottom-btn');
+        const selectAllBtn = document.getElementById('select-all-btn');
+        const deselectAllBtn = document.getElementById('deselect-all-btn');
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const messageBox = document.getElementById('message-box');
+        const messageText = document.getElementById('message-text');
+        const loadMoreContainer = document.getElementById('load-more-container');
+        const loadMoreBtn = document.getElementById('load-more-btn');
+
+        // Filter DOM Elements
+        const filterWalkSpeedSlider = document.getElementById('filter-walk-speed');
+        const filterWalkSpeedValue = document.getElementById('filter-walk-speed-value');
+        const filterWalkDurationSlider = document.getElementById('filter-walk-duration');
+        const filterWalkDurationValue = document.getElementById('filter-walk-duration-value');
+        const filterWalkDistanceSlider = document.getElementById('filter-walk-distance');
+        const filterWalkDistanceValue = document.getElementById('filter-walk-distance-value');
+
+        const filterCycleSpeedSlider = document.getElementById('filter-cycle-speed');
+        const filterCycleSpeedValue = document.getElementById('filter-cycle-speed-value');
+        const filterCycleDurationSlider = document.getElementById('filter-cycle-duration');
+        const filterCycleDurationValue = document.getElementById('filter-cycle-duration-value');
+        const filterCycleDistanceSlider = document.getElementById('filter-cycle-distance');
+        const filterCycleDistanceValue = document.getElementById('filter-cycle-distance-value');
+
+
+        // --- Global State ---
+        let allProcessedActivities = []; // Stores activities after initial file processing (date, velocity filter)
+        let currentlyVisibleActivities = []; // Stores activities after dynamic filters (duration, distance)
+        let displayedCount = 0;
+        const activitiesPerPage = 10;
+        let googleMapsReady = false;
+
+        // --- Filter Settings ---
+        let filterSettings = {
+            walkMaxSpeedMPH: 30,
+            walkMinDurationMinutes: 5,
+            walkMinDistanceKm: 0.5,
+            cycleMaxSpeedMPH: 60,
+            cycleMinDurationMinutes: 10,
+            cycleMinDistanceKm: 1.0
+        };
+
+
+        // --- Constants ---
+        const E7 = 10000000.0;
+        const MPH_TO_MPS = 1609.34 / 3600;
+        const METERS_TO_KM = 0.001;
+        const MPS_TO_KMPH = 3.6;
+        const DAYS_FILTER = 30;
+
+
+        const TARGET_ACTIVITY_TYPES = new Set([
+            'WALKING', 'RUNNING', 'CYCLING', 'HIKING', 'MOTORCYCLING', 'SKIING', 'SNOWBOARDING', 'KAYAKING', 'ROWING', 'SAILING', 'ROLLER_SKATING', 'IN_LINE_SKATING', 'SKATEBOARDING', 'SURFING', 'SWIMMING', 'CALISTHENICS', 'ROCK_CLIMBING', 'CROSSFIT', 'ELLIPTICAL', 'STAIR_CLIMBING',
+            'ON_BICYCLE', 'ON_FOOT', 'UNKNOWN_ACTIVITY_TYPE'
+        ]);
+        const ACTIVITY_TYPE_MAP = {
+            'CYCLING': 'Cycling', 'RUNNING': 'Running', 'WALKING': 'Walking', 'HIKING': 'Hiking', 'MOTORCYCLING': 'Motorcycling', 'SKIING': 'Skiing', 'SNOWBOARDING': 'Snowboarding', 'KAYAKING': 'Kayaking', 'ROWING': 'Rowing', 'SAILING': 'Sailing', 'ROLLER_SKATING': 'Roller Skating', 'IN_LINE_SKATING': 'Inline Skating', 'SKATEBOARDING': 'Skateboarding', 'SURFING': 'Surfing', 'SWIMMING': 'Swimming', 'CALISTHENICS': 'Calisthenics', 'ROCK_CLIMBING': 'Rock Climbing', 'CROSSFIT': 'CrossFit', 'ELLIPTICAL': 'Elliptical', 'STAIR_CLIMBING': 'Stair Climbing', 'STILL': 'Still', 'TILTING': 'Tilting', 'UNKNOWN': 'Unknown', 'IN_VEHICLE': 'In Vehicle', 'IN_PASSENGER_VEHICLE': 'In Passenger Vehicle', 'IN_BUS': 'In Bus', 'IN_TRAIN': 'In Train', 'IN_SUBWAY': 'In Subway', 'IN_TRAM': 'In Tram', 'IN_FERRY': 'In Ferry', 'IN_CABLE_CAR': 'In Cable Car', 'IN_FUNICULAR': 'In Funicular', 'FLYING': 'Flying', 'ON_BICYCLE': 'Cycling', 'ON_FOOT': 'Walking/Running', 'UNKNOWN_ACTIVITY_TYPE': 'Unknown Activity'
+        };
+
+        // --- Google Maps SDK Callback ---
+        function initApp() {
+            console.log("Google Maps API ready.");
+            googleMapsReady = true;
+            if (allProcessedActivities.length > 0 && displayedCount > 0) {
+                console.log("Maps API loaded after activities, rendering visible maps...");
+                renderVisibleMaps();
+            }
+        }
+
+        // --- Utility Functions ---
+        function showLoading() { loadingIndicator.style.display = 'flex'; }
+        function hideLoading() { loadingIndicator.style.display = 'none'; }
+
+        function showMessage(message, isError = true) {
+            messageText.textContent = message;
+            messageBox.className = isError
+                ? 'fixed top-5 right-5 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md shadow-md z-50'
+                : 'fixed top-5 right-5 bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded-md shadow-md z-50';
+            messageBox.style.display = 'block';
+            setTimeout(() => {
+                if (messageBox.style.display === 'block') { messageBox.style.display = 'none'; }
+            }, 5000);
+        }
+
+        function formatDuration(ms) {
+            if (ms < 0) ms = 0;
+            const seconds = Math.floor((ms / 1000) % 60);
+            const minutes = Math.floor((ms / (1000 * 60)) % 60);
+            const hours = Math.floor((ms / (1000 * 60 * 60)) % 24);
+            return [ hours.toString().padStart(2, '0'), minutes.toString().padStart(2, '0'), seconds.toString().padStart(2, '0') ].join(':');
+        }
+
+        function formatDateTime(date) {
+            if (!(date instanceof Date) || isNaN(date)) return 'Invalid Date';
+            return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function formatIsoTime(date) {
+            if (date instanceof Date && !isNaN(date)) { return date.toISOString(); }
+            console.warn("Invalid date encountered in formatIsoTime:", date);
+            return new Date(0).toISOString();
+        }
+
+        function parseLatLngString(pointString) {
+            if (typeof pointString !== 'string') return null;
+            const parts = pointString.replace(/°/g, '').split(',');
+            if (parts.length !== 2) return null;
+            const lat = parseFloat(parts[0].trim());
+            const lon = parseFloat(parts[1].trim());
+            if (isNaN(lat) || isNaN(lon)) return null;
+            return { lat, lon };
+        }
+
+        function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth radius in meters
+            const phi1 = lat1 * Math.PI / 180;
+            const phi2 = lat2 * Math.PI / 180;
+            const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+            const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+                      Math.cos(phi1) * Math.cos(phi2) *
+                      Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c; // Distance in meters
+        }
+
+
+        // --- File Input & Initial Processing ---
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            resetUIState();
+            showLoading();
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const fileContent = e.target.result;
+                try {
+                    console.time("File Processing Time");
+                    const data = JSON.parse(fileContent);
+                    let processed = [];
+
+                    if (data && Array.isArray(data.timelineObjects)) {
+                        processed = processTimelineObjects(data.timelineObjects);
+                    } else if (data && Array.isArray(data.semanticSegments) && Array.isArray(data.rawSignals)) {
+                        processed = processSemanticSegmentsWithRawSignals(data.semanticSegments, data.rawSignals);
+                    } else if (data && Array.isArray(data.semanticSegments)) {
+                        processed = processSemanticSegmentsLegacy(data.semanticSegments);
+                    } else if (Array.isArray(data)) {
+                         processed = processTimelineObjects(data);
+                    } else {
+                        throw new Error("Unrecognized JSON format.");
+                    }
+                    allProcessedActivities = processed; // Store activities after date & velocity filters
+                    console.timeEnd("File Processing Time");
+                    console.log(`Initial processing complete: ${allProcessedActivities.length} activities (date & velocity filtered).`);
+                    applyAllDynamicFiltersAndDisplay(); // Apply dynamic filters and display
+                } catch (error) {
+                    console.error("Error processing file:", error);
+                    showMessage(`Error processing file: ${error.message}`, true);
+                    resetUIState();
+                } finally {
+                    hideLoading();
+                    fileInput.value = '';
+                }
+            };
+            reader.onerror = (e) => { console.error("Error reading file:", e); showMessage("Error reading file.", true); hideLoading(); resetUIState(); };
+            reader.readAsText(file);
+        });
+
+        function resetUIState() {
+            activityListDiv.innerHTML = '';
+            activityListSection.classList.add('hidden');
+            loadMoreContainer.classList.add('hidden');
+            downloadSelectedTopBtn.disabled = true;
+            downloadSelectedBottomBtn.disabled = true;
+            allProcessedActivities = [];
+            currentlyVisibleActivities = [];
+            displayedCount = 0;
+        }
+
+        // --- Activity Processing Functions (with date and velocity filters) ---
+        function filterWaypointsBySpeed(waypoints, activityType) {
+            if (!waypoints || waypoints.length < 2) return { waypoints: waypoints, removedCount: 0 };
+            let maxSpeedMPS;
+            const typeUpper = activityType.toUpperCase();
+            if (typeUpper === 'WALKING' || typeUpper === 'ON_FOOT' || typeUpper === 'RUNNING' || typeUpper === 'HIKING') {
+                maxSpeedMPS = filterSettings.walkMaxSpeedMPH * MPH_TO_MPS;
+            } else if (typeUpper === 'CYCLING' || typeUpper === 'ON_BICYCLE') {
+                maxSpeedMPS = filterSettings.cycleMaxSpeedMPH * MPH_TO_MPS;
+            } else { return { waypoints: waypoints, removedCount: 0 }; }
+
+            const filteredWaypoints = [waypoints[0]];
+            let lastAcceptedPoint = waypoints[0]; let removedCount = 0;
+            for (let i = 1; i < waypoints.length; i++) {
+                const currentPoint = waypoints[i];
+                const distanceMeters = calculateHaversineDistance(lastAcceptedPoint.lat, lastAcceptedPoint.lon, currentPoint.lat, currentPoint.lon);
+                const timeDiffSeconds = (currentPoint.time.getTime() - lastAcceptedPoint.time.getTime()) / 1000;
+
+                if (timeDiffSeconds > 0.1) {
+                    const speedMPS = distanceMeters / timeDiffSeconds;
+                    if (speedMPS <= maxSpeedMPS) {
+                        filteredWaypoints.push(currentPoint);
+                        lastAcceptedPoint = currentPoint;
+                    } else { removedCount++; }
+                } else if (distanceMeters > 0.1 && timeDiffSeconds <= 0.1) { removedCount++; }
+                else { filteredWaypoints.push(currentPoint); lastAcceptedPoint = currentPoint; }
+            }
+            if (removedCount > 0) { console.log(`Velocity filter for ${activityType} (max ${maxSpeedMPS / MPH_TO_MPS} mph) removed ${removedCount} outlier points. ${filteredWaypoints.length} points remain.`); }
+            return { waypoints: filteredWaypoints, removedCount: removedCount };
+        }
+
+        function calculateActivityStats(activity) {
+            if (!activity.waypoints || activity.waypoints.length < 2) {
+                activity.totalDistanceMeters = 0;
+                activity.averageSpeedKmph = 0;
+                return;
+            }
+            let totalDistance = 0;
+            for (let i = 1; i < activity.waypoints.length; i++) {
+                totalDistance += calculateHaversineDistance(activity.waypoints[i-1].lat, activity.waypoints[i-1].lon, activity.waypoints[i].lat, activity.waypoints[i].lon);
+            }
+            activity.totalDistanceMeters = totalDistance;
+            if (activity.durationMs > 0) {
+                const durationSeconds = activity.durationMs / 1000;
+                activity.averageSpeedKmph = (totalDistance / durationSeconds) * MPS_TO_KMPH;
+            } else { activity.averageSpeedKmph = 0; }
+        }
+
+        function processTimelineObjects(timelineObjectsArray) {
+            const activities = []; let activityCounter = 0;
+            const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - DAYS_FILTER); thirtyDaysAgo.setHours(0,0,0,0);
+            const allPositionRecords = [];
+            for (const item of timelineObjectsArray) { if (item.position?.LatLng && item.position.timestamp) { const coords = parseLatLngString(item.position.LatLng); const time = new Date(item.position.timestamp); if (coords && !isNaN(time.getTime())) { allPositionRecords.push({ lat: coords.lat, lon: coords.lon, time: time }); } } }
+            allPositionRecords.sort((a, b) => a.time.getTime() - b.time.getTime());
+            // console.log(`processTimelineObjects: Collected ${allPositionRecords.length} raw position records.`);
+
+            for (const item of timelineObjectsArray) {
+                if (item.activitySegment) {
+                    const segment = item.activitySegment; const activityType = segment.activityType;
+                    if (!TARGET_ACTIVITY_TYPES.has(activityType)) continue;
+                    const startTime = new Date(segment.duration?.startTimestamp);
+                    if (startTime < thirtyDaysAgo) { /* console.log(`Skipping ${activityType} (timelineObjects) - too old: ${startTime.toISOString()}`); */ continue; }
+                    const endTime = new Date(segment.duration?.endTimestamp); if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) continue;
+                    const durationMs = endTime.getTime() - startTime.getTime(); if (durationMs <= 0) continue;
+
+                    let waypoints = []; let pathSource = "Correlated Raw"; let originalWaypointCount = 0; let removedByVelocityFilterCount = 0;
+                    const correlatedPoints = allPositionRecords.filter(p => p.time.getTime() >= startTime.getTime() && p.time.getTime() <= endTime.getTime());
+                    originalWaypointCount = correlatedPoints.length;
+                    // console.log(`  Activity ${activityType} (${startTime.toISOString()}): Found ${originalWaypointCount} correlated raw points.`);
+
+                    if (correlatedPoints.length > 1) {
+                        const res = filterWaypointsBySpeed(correlatedPoints, activityType);
+                        waypoints = res.waypoints; removedByVelocityFilterCount = res.removedCount;
+                        waypoints = waypoints.filter((wp, i, arr) => i === 0 || !(wp.lat === arr[i-1].lat && wp.lon === arr[i-1].lon && wp.time.getTime() === arr[i-1].time.getTime()));
+                        // console.log(`    After speed/unique filter: ${waypoints.length} points.`);
+                    }
+
+                    if (waypoints.length <= 1) { // Fallback to internal paths
+                        // console.log(`    Correlated points insufficient or filtered out. Checking internal paths for ${activityType}.`);
+                        let internalPathPoints = [];
+                        if (segment.waypointPath?.waypoints?.length > 0) {
+                            internalPathPoints = segment.waypointPath.waypoints.map(wp => ({ lat: wp.latE7 / E7, lon: wp.lngE7 / E7, time: wp.timestamp ? new Date(wp.timestamp) : null })).filter(wp => wp.lat !== undefined && wp.lon !== undefined && wp.time && !isNaN(wp.time.getTime()));
+                            pathSource = "Segment WaypointPath";
+                        } else if (segment.simplifiedRawPath?.points?.length > 0) {
+                            internalPathPoints = segment.simplifiedRawPath.points.map(p => ({ lat: p.latE7 / E7, lon: p.lngE7 / E7, time: p.timestampMs ? new Date(parseInt(p.timestampMs)) : null })).filter(wp => wp.lat !== undefined && wp.lon !== undefined && wp.time && !isNaN(wp.time.getTime()));
+                            pathSource = "Segment SimplifiedRawPath";
+                        }
+                        if (internalPathPoints.length > 1 && internalPathPoints.some(wp => !wp.time || isNaN(wp.time.getTime()))) { const firstTime = startTime.getTime(); const timeDiff = durationMs; internalPathPoints.forEach((wp, index) => { if (!wp.time || isNaN(wp.time.getTime())) { const fraction = internalPathPoints.length === 1 ? 0 : index / (internalPathPoints.length - 1); wp.time = new Date(firstTime + timeDiff * fraction); } }); }
+                        internalPathPoints = internalPathPoints.filter(wp => wp.time instanceof Date && !isNaN(wp.time.getTime()));
+                        originalWaypointCount = internalPathPoints.length; // Update original count for this source
+                        if (internalPathPoints.length > 1) { const filterResult = filterWaypointsBySpeed(internalPathPoints, activityType); waypoints = filterResult.waypoints; removedByVelocityFilterCount = filterResult.removedCount; }
+                        // console.log(`    Internal path (${pathSource}): ${originalWaypointCount} raw, ${waypoints.length} after speed filter.`);
+                    }
+
+                    if (waypoints.length > 1) {
+                        waypoints.sort((a,b) => a.time.getTime() - b.time.getTime());
+                        const activity = { id: `activity-${activityCounter++}`, type: activityType, startTime: startTime, endTime: endTime, durationMs: durationMs, waypoints: waypoints, originalWaypointCount: originalWaypointCount, removedByVelocityFilterCount: removedByVelocityFilterCount };
+                        calculateActivityStats(activity); activities.push(activity);
+                    } else { /* console.log(`  Skipping ${activityType} (timelineObjects) - insufficient points (<2) after all filters.`); */ }
+                }
+            }
+            activities.sort((a, b) => b.startTime.getTime() - a.startTime.getTime()); return activities;
+        }
+
+        function processSemanticSegmentsLegacy(semanticSegmentsArray) {
+            const finalActivities = []; let activityCounter = 0;
+            if (!Array.isArray(semanticSegmentsArray)) { console.error("processSemanticSegmentsLegacy expects an array."); return []; }
+            const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - DAYS_FILTER); thirtyDaysAgo.setHours(0,0,0,0);
+
+            for (const segment of semanticSegmentsArray) {
+                let activityType = 'UNKNOWN'; let waypoints = []; let originalWaypointCount = 0; let removedByVelocityFilterCount = 0;
+                if (segment.activity?.topCandidate?.type) { activityType = segment.activity.topCandidate.type; }
+                else if (segment.type && TARGET_ACTIVITY_TYPES.has(segment.type)) { activityType = segment.type; }
+                if (!TARGET_ACTIVITY_TYPES.has(activityType)) continue;
+                const startTime = segment.startTime ? new Date(segment.startTime) : null;
+                if (!startTime || startTime < thirtyDaysAgo) { /* console.log(`Skipping ${activityType} (Legacy Semantic) - too old or no start time.`); */ continue; }
+                const endTime = segment.endTime ? new Date(segment.endTime) : null;
+                if (!endTime || isNaN(startTime.getTime()) || isNaN(endTime.getTime())) continue;
+                const durationMs = endTime.getTime() - startTime.getTime(); if (durationMs <= 0) continue;
+
+                if (segment.timelinePath && Array.isArray(segment.timelinePath)) {
+                    const rawWaypoints = segment.timelinePath.map(pathPoint => { const coords = parseLatLngString(pathPoint.point); const time = pathPoint.time ? new Date(pathPoint.time) : null; if (coords && time && !isNaN(time.getTime())) { return { lat: coords.lat, lon: coords.lon, time: time }; } return null; }).filter(wp => wp !== null);
+                    originalWaypointCount = rawWaypoints.length;
+                    // console.log(`  Activity ${activityType} (${startTime.toISOString()} - Legacy): Found ${originalWaypointCount} raw points in timelinePath.`);
+                    if (rawWaypoints.length > 1) { const filterResult = filterWaypointsBySpeed(rawWaypoints, activityType); waypoints = filterResult.waypoints; removedByVelocityFilterCount = filterResult.removedCount; }
+                    // console.log(`    After speed filter: ${waypoints.length} points.`);
+                }
+
+                if (waypoints.length > 1) {
+                    waypoints.sort((a, b) => a.time.getTime() - b.time.getTime());
+                    const activity = { id: `activity-${activityCounter++}`, type: activityType, startTime: startTime, endTime: endTime, durationMs: durationMs, waypoints: waypoints, originalWaypointCount: originalWaypointCount, removedByVelocityFilterCount: removedByVelocityFilterCount };
+                    calculateActivityStats(activity); finalActivities.push(activity);
+                } else { /* console.log(`  Skipping ${activityType} (Legacy Semantic) - insufficient points after all filters.`); */ }
+            }
+            finalActivities.sort((a, b) => b.startTime.getTime() - a.startTime.getTime()); return finalActivities;
+        }
+
+        function processSemanticSegmentsWithRawSignals(semanticSegmentsArray, rawSignalsArray) {
+            const finalActivities = []; let activityCounter = 0;
+            if (!Array.isArray(semanticSegmentsArray) || !Array.isArray(rawSignalsArray)) { console.error("processSemanticSegmentsWithRawSignals expects arrays."); return []; }
+            const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - DAYS_FILTER); thirtyDaysAgo.setHours(0,0,0,0);
+
+            const allPositionRecords = [];
+            // console.log(`processSemanticSegmentsWithRawSignals: Iterating ${rawSignalsArray.length} raw signals to find positions.`);
+            for (const signal of rawSignalsArray) {
+                if (signal.position && typeof signal.position.LatLng === 'string' && typeof signal.position.timestamp === 'string') {
+                    const coords = parseLatLngString(signal.position.LatLng);
+                    const time = new Date(signal.position.timestamp);
+                    // console.log(`  Signal position: LatLng='${signal.position.LatLng}', Timestamp='${signal.position.timestamp}' -> Coords: ${JSON.stringify(coords)}, Time: ${time.toISOString()}, ValidTime: ${!isNaN(time.getTime())}`);
+                    if (coords && !isNaN(time.getTime())) {
+                        allPositionRecords.push({ lat: coords.lat, lon: coords.lon, time: time });
+                    } else {
+                        // console.warn("    Skipped raw signal position due to invalid coords or time.", signal.position);
+                    }
+                }
+            }
+            allPositionRecords.sort((a, b) => a.time.getTime() - b.time.getTime());
+            console.log(`processSemanticSegmentsWithRawSignals: Collected ${allPositionRecords.length} valid position records from rawSignals.`);
+            if (allPositionRecords.length === 0 && rawSignalsArray.some(s => s.position)) {
+                console.warn("processSemanticSegmentsWithRawSignals: Found signals with 'position' key, but no valid LatLng/timestamp pairs were extracted. Check parsing logic and data structure of 'position' objects.");
+            }
+
+            for (const segment of semanticSegmentsArray) {
+                if (segment.activity?.topCandidate && segment.startTime && segment.endTime) {
+                    const activityType = segment.activity.topCandidate.type; if (!TARGET_ACTIVITY_TYPES.has(activityType)) continue;
+                    const startTime = new Date(segment.startTime);
+                    if (startTime < thirtyDaysAgo) { /* console.log(`Skipping ${activityType} (semantic/rawSignals) - too old: ${startTime.toISOString()}`); */ continue; }
+                    const endTime = new Date(segment.endTime);
+                    if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) continue;
+                    const durationMs = endTime.getTime() - startTime.getTime(); if (durationMs <= 0) continue;
+
+                    const correlatedPoints = allPositionRecords.filter(p => p.time.getTime() >= startTime.getTime() && p.time.getTime() <= endTime.getTime());
+                    let waypoints = []; let originalWaypointCount = correlatedPoints.length; let removedByVelocityFilterCount = 0;
+                    // console.log(`  Activity ${activityType} (${startTime.toISOString()}): Found ${originalWaypointCount} correlated raw points.`);
+
+                    if (correlatedPoints.length > 1) {
+                        const filterResult = filterWaypointsBySpeed(correlatedPoints, activityType);
+                        waypoints = filterResult.waypoints;
+                        removedByVelocityFilterCount = filterResult.removedCount;
+                        waypoints = waypoints.filter((wp, i, arr) => i === 0 || !(wp.lat === arr[i-1].lat && wp.lon === arr[i-1].lon && wp.time.getTime() === arr[i-1].time.getTime()));
+                        // console.log(`    After speed/unique filter: ${waypoints.length} points.`);
+                    }
+
+                    if (waypoints.length > 1) {
+                         waypoints.sort((a,b) => a.time.getTime() - b.time.getTime());
+                         const activity = { id: `activity-${activityCounter++}`, type: activityType, startTime: startTime, endTime: endTime, durationMs: durationMs, waypoints: waypoints, originalWaypointCount: originalWaypointCount, removedByVelocityFilterCount: removedByVelocityFilterCount };
+                         calculateActivityStats(activity); finalActivities.push(activity);
+                    } else { /* console.log(`  Skipping ${activityType} (semantic/rawSignals) - insufficient points after all filters.`); */ }
+                }
+            }
+            finalActivities.sort((a, b) => b.startTime.getTime() - a.startTime.getTime()); return finalActivities;
+        }
+
+        // --- Dynamic Filtering and Display ---
+        function applyAllDynamicFiltersAndDisplay() {
+            console.log("Applying dynamic filters with settings:", JSON.stringify(filterSettings));
+            console.log(`Starting with ${allProcessedActivities.length} initially processed activities.`);
+            currentlyVisibleActivities = allProcessedActivities.filter(activity => {
+                const activityTypeUpper = activity.type.toUpperCase();
+                let passes = true;
+                let reason = "";
+
+                if (activityTypeUpper === 'WALKING' || activityTypeUpper === 'ON_FOOT' || activityTypeUpper === 'RUNNING' || activityTypeUpper === 'HIKING') {
+                    const minDurationMs = filterSettings.walkMinDurationMinutes * 60 * 1000;
+                    const minDistanceM = filterSettings.walkMinDistanceKm * 1000;
+                    if (activity.durationMs < minDurationMs) { passes = false; reason += `Walk duration ${activity.durationMs}ms < ${minDurationMs}ms. `; }
+                    if (activity.totalDistanceMeters < minDistanceM) { passes = false; reason += `Walk distance ${activity.totalDistanceMeters.toFixed(0)}m < ${minDistanceM}m. `; }
+                } else if (activityTypeUpper === 'CYCLING' || activityTypeUpper === 'ON_BICYCLE') {
+                    const minDurationMs = filterSettings.cycleMinDurationMinutes * 60 * 1000;
+                    const minDistanceM = filterSettings.cycleMinDistanceKm * 1000;
+                    if (activity.durationMs < minDurationMs) { passes = false; reason += `Cycle duration ${activity.durationMs}ms < ${minDurationMs}ms. `; }
+                    if (activity.totalDistanceMeters < minDistanceM) { passes = false; reason += `Cycle distance ${activity.totalDistanceMeters.toFixed(0)}m < ${minDistanceM}m. `; }
+                }
+
+                if (!passes) { console.log(`Activity ID ${activity.id} (${activity.type}) filtered out by dynamic filters. Reason: ${reason.trim()}`); }
+                // else { console.log(`Activity ID ${activity.id} (${activity.type}) PASSED dynamic filters.`); }
+                return passes;
+            });
+
+            console.log(`${currentlyVisibleActivities.length} activities after dynamic filters.`);
+            displayedCount = 0;
+            activityListDiv.innerHTML = '';
+            if (currentlyVisibleActivities.length > 0) {
+                activityListSection.classList.remove('hidden');
+                loadAndDisplayChunk();
+                showMessage(`Showing ${currentlyVisibleActivities.length} activities matching filters.`, false);
+            } else {
+                activityListSection.classList.add('hidden');
+                loadMoreContainer.classList.add('hidden');
+                showMessage(`No activities match the current filter settings.`, false);
+            }
+            updateDownloadButtonState();
+        }
+
+
+        function handleFileLoadSuccess() { applyAllDynamicFiltersAndDisplay(); }
+        function loadAndDisplayChunk() {
+            const start = displayedCount; const end = start + activitiesPerPage;
+            const chunk = currentlyVisibleActivities.slice(start, end);
+            if (chunk.length > 0) { appendActivitiesToDOM(chunk); displayedCount += chunk.length; }
+            updateLoadMoreButtonVisibility();
+        }
+
+        function appendActivitiesToDOM(activitiesChunk) {
+            const fragment = document.createDocumentFragment();
+            activitiesChunk.forEach(activity => {
+                const displayName = ACTIVITY_TYPE_MAP[activity.type] || activity.type.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+                const listItem = document.createElement('div'); listItem.className = 'activity-item';
+                const waypointCount = activity.waypoints ? activity.waypoints.length : 0;
+                const startTimeFormatted = formatDateTime(activity.startTime);
+                const durationFormatted = formatDuration(activity.durationMs);
+                const mapContainerId = `map-${activity.id}`;
+                const distanceKm = (activity.totalDistanceMeters * METERS_TO_KM).toFixed(2);
+                const speedKmph = (activity.averageSpeedKmph).toFixed(1);
+
+                let pointsInfo = `${waypointCount} pts`;
+                if (activity.removedByVelocityFilterCount > 0) {
+                    // Show original count before speed filter if points were removed
+                    pointsInfo = `${waypointCount} pts (from ${activity.originalWaypointCount} original, ${activity.removedByVelocityFilterCount} speed outliers removed)`;
+                }
+
+
+                listItem.innerHTML = `
+                    <div class="activity-info-container flex items-center">
+                        <input type="checkbox" id="${activity.id}" data-activity-id="${activity.id}" class="activity-checkbox">
+                        <label for="${activity.id}" class="ml-2 cursor-pointer flex-grow">
+                            <span class="font-medium text-gray-800">${displayName}</span>
+                            <div class="text-xs text-gray-600">
+                                ${startTimeFormatted} | ${durationFormatted} | ${distanceKm} km | ${speedKmph} km/h | ${pointsInfo}
+                            </div>
+                        </label>
+                    </div>
+                    <div class="activity-actions">
+                        <button title="Download GPX for this activity" class="individual-download-btn" data-activity-id="${activity.id}">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        </button>
+                        <div id="${mapContainerId}" class="map-preview ml-2">
+                           <div class="map-preview-placeholder">Loading map...</div>
+                        </div>
+                    </div>`;
+                const checkbox = listItem.querySelector('.activity-checkbox'); if (checkbox) { checkbox.addEventListener('change', updateDownloadButtonState); }
+                const individualDownloadBtn = listItem.querySelector('.individual-download-btn'); if (individualDownloadBtn) { individualDownloadBtn.addEventListener('click', handleIndividualDownload); }
+                fragment.appendChild(listItem);
+                setTimeout(() => renderMapThumbnail(activity, mapContainerId), 0);
+            });
+            activityListDiv.appendChild(fragment);
+        }
+
+        function renderVisibleMaps() {
+            const mapPlaceholders = activityListDiv.querySelectorAll('.map-preview[id^="map-"]');
+            mapPlaceholders.forEach(div => { const activityId = div.id.replace('map-', ''); const activity = allProcessedActivities.find(act => act.id === activityId); if (activity) { renderMapThumbnail(activity, div.id); } });
+        }
+        function updateLoadMoreButtonVisibility() { if (displayedCount < currentlyVisibleActivities.length) { loadMoreContainer.classList.remove('hidden'); } else { loadMoreContainer.classList.add('hidden'); } }
+        function updateDownloadButtonState() { const anySelected = Array.from(activityListDiv.querySelectorAll('.activity-checkbox:checked')).some(cb => cb.checked); downloadSelectedTopBtn.disabled = !anySelected; downloadSelectedBottomBtn.disabled = !anySelected; }
+
+        // --- Map Rendering ---
+        function renderMapThumbnail(activity, mapContainerId) {
+            if (!googleMapsReady) { console.log(`Maps API not ready, skipping map render for ${mapContainerId}`); return; }
+            if (!activity || !activity.waypoints || activity.waypoints.length < 2) {
+                 console.warn(`Activity ${activity?.id} has < 2 waypoints, cannot render map.`);
+                 const mapDiv = document.getElementById(mapContainerId); if (mapDiv) mapDiv.innerHTML = '<div class="map-preview-placeholder">Not enough path data</div>'; return;
+             }
+            const mapDiv = document.getElementById(mapContainerId); if (!mapDiv) { console.error(`Map container element not found: ${mapContainerId}`); return; }
+             mapDiv.innerHTML = '';
+
+            try {
+                const mapOptions = { zoom: 15, center: { lat: activity.waypoints[0].lat, lng: activity.waypoints[0].lon }, mapTypeId: 'roadmap', disableDefaultUI: true, draggable: false, zoomControl: false, scrollwheel: false, disableDoubleClickZoom: true, gestureHandling: 'none' };
+                const map = new google.maps.Map(mapDiv, mapOptions);
+                if (!map) { console.error(`Failed to create map object for ${mapContainerId}`); mapDiv.innerHTML = '<div class="map-preview-placeholder">Failed to create map</div>'; return; }
+
+                const pathCoordinates = activity.waypoints.map(wp => ({ lat: wp.lat, lng: wp.lon }));
+                const polyline = new google.maps.Polyline({ path: pathCoordinates, geodesic: true, strokeColor: '#FF0000', strokeOpacity: 0.8, strokeWeight: 2 });
+                polyline.setMap(map);
+
+                if (pathCoordinates.length > 0) {
+                    const bounds = new google.maps.LatLngBounds();
+                    pathCoordinates.forEach(coord => bounds.extend(coord));
+                    map.fitBounds(bounds, 5);
+                    google.maps.event.addListenerOnce(map, 'tilesloaded', () => { /* console.log(`Tiles loaded for map ${mapContainerId}`); */ });
+                }
+            } catch (error) {
+                console.error(`Error rendering map for ${mapContainerId}:`, error);
+                 mapDiv.innerHTML = '<div class="map-preview-placeholder">Error loading map</div>';
+            }
+        }
+
+        // --- GPX Generation & Download ---
+        function generateGpxContent(activity) {
+            const validWaypoints = activity.waypoints.filter(wp => wp && typeof wp.lat === 'number' && typeof wp.lon === 'number' && wp.time instanceof Date && !isNaN(wp.time));
+            if (validWaypoints.length < 2) { console.warn("Cannot generate GPX for activity with < 2 valid waypoints:", activity); return null; }
+            validWaypoints.sort((a, b) => a.time.getTime() - b.time.getTime()); const pointsXml = validWaypoints.map(wp => `<trkpt lat="${wp.lat.toFixed(7)}" lon="${wp.lon.toFixed(7)}"><time>${formatIsoTime(wp.time)}</time></trkpt>`).join('\n      ');
+            const activityName = `${ACTIVITY_TYPE_MAP[activity.type] || activity.type} - ${activity.startTime.toISOString().split('T')[0]}`; const metadataTime = formatIsoTime(activity.startTime);
+            return `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="GoogleTimelineToGPXWebApp" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd"><metadata><name>${xmlEscape(activityName)}</name><link href="https://github.com/gemini-apps/timeline-to-gpx"><text>Google Timeline to GPX Converter</text></link><time>${metadataTime}</time></metadata><trk><name>${xmlEscape(activityName)}</name><type>${xmlEscape(ACTIVITY_TYPE_MAP[activity.type] || activity.type)}</type><trkseg>${pointsXml}</trkseg></trk></gpx>`;
+        }
+        function xmlEscape(str) { str = String(str); return str.replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '\'': '&apos;', '"': '&quot;' }[c])); }
+
+        function downloadFile(activity) {
+            const gpxContent = generateGpxContent(activity);
+            if (gpxContent) {
+                const safeType = (ACTIVITY_TYPE_MAP[activity.type] || activity.type).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                const distanceKmStr = (activity.totalDistanceMeters * METERS_TO_KM).toFixed(1).replace('.', '_');
+                const filename = `timeline_${safeType}_${activity.startTime.toISOString().split('T')[0]}_${distanceKmStr}km.gpx`;
+                const blob = new Blob([gpxContent], { type: 'application/gpx+xml' }); const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = filename;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); return true;
+            } return false;
+        }
+        function handleIndividualDownload(event) {
+            const activityId = event.currentTarget.dataset.activityId;
+            const activity = allProcessedActivities.find(act => act.id === activityId); // Find in the master list
+            if (activity) {
+                if(downloadFile(activity)) {
+                    showMessage(`Downloaded GPX for ${ACTIVITY_TYPE_MAP[activity.type] || activity.type} on ${formatDateTime(activity.startTime)}.`, false);
+                } else {
+                    showMessage(`Failed to generate GPX for ${ACTIVITY_TYPE_MAP[activity.type] || activity.type}.`, true);
+                }
+            } else {
+                showMessage(`Could not find activity data to download.`, true);
+            }
+        }
+        function downloadSelectedActivities() {
+            const selectedCheckboxes = activityListDiv.querySelectorAll('.activity-checkbox:checked');
+            if (selectedCheckboxes.length === 0) { showMessage("Please select at least one activity.", true); return; }
+            showLoading(); let downloadedCount = 0; let errorCount = 0;
+            setTimeout(() => {
+                try {
+                    selectedCheckboxes.forEach((checkbox) => {
+                        const activityId = checkbox.dataset.activityId;
+                        const activity = allProcessedActivities.find(act => act.id === activityId); // Find in master list
+                        if (activity) { if (downloadFile(activity)) { downloadedCount++; } else { errorCount++; } }
+                        else { errorCount++; console.error("Activity not found for ID:", activityId); }
+                    });
+                    if (downloadedCount > 0 && errorCount === 0) { showMessage(`Downloaded ${downloadedCount} GPX file(s).`, false); }
+                    else if (downloadedCount > 0 && errorCount > 0) { showMessage(`Downloaded ${downloadedCount}, failed ${errorCount}. Check console.`, true); }
+                    else if (downloadedCount === 0 && errorCount > 0) { showMessage(`Failed GPX for ${errorCount} activities. Check console.`, true); }
+                } catch (error) { console.error("Download error:", error); showMessage(`Download error: ${error.message}`, true); }
+                finally { hideLoading(); }
+            }, 50);
+        }
+
+
+        // --- Event Listeners ---
+        loadMoreBtn.addEventListener('click', loadAndDisplayChunk);
+        downloadSelectedTopBtn.addEventListener('click', downloadSelectedActivities);
+        downloadSelectedBottomBtn.addEventListener('click', downloadSelectedActivities);
+        selectAllBtn.addEventListener('click', () => { activityListDiv.querySelectorAll('.activity-checkbox').forEach(cb => { cb.checked = true; }); updateDownloadButtonState(); });
+        deselectAllBtn.addEventListener('click', () => { activityListDiv.querySelectorAll('.activity-checkbox').forEach(cb => { cb.checked = false; }); updateDownloadButtonState(); });
+
+        function setupFilterListeners() {
+            const inputs = [
+                {slider: filterWalkSpeedSlider, valueDisplay: filterWalkSpeedValue, setting: 'walkMaxSpeedMPH', isSpeedFilter: true},
+                {slider: filterWalkDurationSlider, valueDisplay: filterWalkDurationValue, setting: 'walkMinDurationMinutes'},
+                {slider: filterWalkDistanceSlider, valueDisplay: filterWalkDistanceValue, setting: 'walkMinDistanceKm'},
+                {slider: filterCycleSpeedSlider, valueDisplay: filterCycleSpeedValue, setting: 'cycleMaxSpeedMPH', isSpeedFilter: true},
+                {slider: filterCycleDurationSlider, valueDisplay: filterCycleDurationValue, setting: 'cycleMinDurationMinutes'},
+                {slider: filterCycleDistanceSlider, valueDisplay: filterCycleDistanceValue, setting: 'cycleMinDistanceKm'},
+            ];
+
+            inputs.forEach(input => {
+                input.slider.addEventListener('input', () => {
+                    input.valueDisplay.value = input.slider.value;
+                    filterSettings[input.setting] = parseFloat(input.slider.value);
+                    if (allProcessedActivities.length > 0) {
+                        if (input.isSpeedFilter) {
+                            showMessage("Speed filter changes apply on next file load or by re-uploading.", false);
+                            // For now, dynamic filters will re-apply. True speed re-filtering requires re-processing.
+                            applyAllDynamicFiltersAndDisplay();
+                        } else {
+                            applyAllDynamicFiltersAndDisplay();
+                        }
+                    }
+                });
+                input.valueDisplay.addEventListener('change', () => {
+                    let value = parseFloat(input.valueDisplay.value); const min = parseFloat(input.slider.min); const max = parseFloat(input.slider.max);
+                    if (isNaN(value)) value = filterSettings[input.setting]; if (value < min) value = min; if (value > max) value = max;
+                    input.valueDisplay.value = value; input.slider.value = value; filterSettings[input.setting] = value;
+                    if (allProcessedActivities.length > 0) {
+                         if (input.isSpeedFilter) {
+                            showMessage("Speed filter changes apply on next file load or by re-uploading.", false);
+                             applyAllDynamicFiltersAndDisplay();
+                        } else {
+                            applyAllDynamicFiltersAndDisplay();
+                        }
+                    }
+                });
+            });
+        }
+        setupFilterListeners();
+        // Initialize filter values from default settings
+        filterWalkSpeedSlider.value = filterSettings.walkMaxSpeedMPH; filterWalkSpeedValue.value = filterSettings.walkMaxSpeedMPH;
+        filterWalkDurationSlider.value = filterSettings.walkMinDurationMinutes; filterWalkDurationValue.value = filterSettings.walkMinDurationMinutes;
+        filterWalkDistanceSlider.value = filterSettings.walkMinDistanceKm; filterWalkDistanceValue.value = filterSettings.walkMinDistanceKm;
+        filterCycleSpeedSlider.value = filterSettings.cycleMaxSpeedMPH; filterCycleSpeedValue.value = filterSettings.cycleMaxSpeedMPH;
+        filterCycleDurationSlider.value = filterSettings.cycleMinDurationMinutes; filterCycleDurationValue.value = filterSettings.cycleMinDurationMinutes;
+        filterCycleDistanceSlider.value = filterSettings.cycleMinDistanceKm; filterCycleDistanceValue.value = filterSettings.cycleMinDistanceKm;
+
+    </script>
+</body>
+</html>
