@@ -643,7 +643,7 @@
              mapDiv.innerHTML = '';
 
             try {
-                const mapOptions = { zoom: 15, center: { lat: activity.waypoints[0].lat, lng: activity.waypoints[0].lon }, mapTypeId: 'roadmap', disableDefaultUI: true, draggable: false, zoomControl: false, scrollwheel: false, disableDoubleClickZoom: true, gestureHandling: 'none' };
+                const mapOptions = { zoom: 15, center: { lat: activity.waypoints[0].lat, lng: activity.waypoints[0].lon }, mapTypeId: 'roadmap', disableDefaultUI: true, draggable: false, zoomControl: false, scrollwheel: false, disableDoubleClickZoom: true, gestureHandling: 'none', clickableIcons: false };
                 const map = new google.maps.Map(mapDiv, mapOptions);
                 if (!map) { console.error(`Failed to create map object for ${mapContainerId}`); mapDiv.innerHTML = '<div class="map-preview-placeholder">Failed to create map</div>'; return; }
 
